@@ -1,276 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
 * {
   box-sizing: border-box;
 }
 
-:root {
-  color-scheme: dark;
-  --bg: #09090b;
-  --card: #111114;
-  --card-2: #16161b;
-  --line: #28282f;
-  --text: #f5f5f7;
-  --muted: #a3a3ad;
-  --gold: #d4a24c;
-}
-
 html, body, #root {
+  height: 100%;
   margin: 0;
-  min-height: 100%;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top, rgba(255,255,255,0.04), transparent 34%), var(--bg);
-  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  background: #09090b;
 }
 
-.premium-page {
-  min-height: 100vh;
-  padding: 24px;
+/* Scrollbar (clean + minimal) */
+::-webkit-scrollbar {
+  width: 8px;
 }
-
-.premium-shell {
-  max-width: 1500px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 24px;
-  align-items: start;
-}
-
-.controls-card,
-.canvas-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
-  border: 1px solid var(--line);
-  border-radius: 30px;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.34);
-}
-
-.controls-card {
-  padding: 24px;
-  position: sticky;
-  top: 16px;
-}
-
-.controls-head,
-.canvas-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.76rem;
-  color: var(--gold);
-  margin-bottom: 8px;
-}
-
-.controls-head h1,
-.canvas-top h2 {
-  margin: 0;
-}
-
-.controls-head h1 {
-  font-size: 2rem;
-  line-height: 1.05;
-}
-
-.controls-head p,
-.canvas-top p {
-  margin: 10px 0 0 0;
-  color: var(--muted);
-  font-size: 0.96rem;
-  line-height: 1.5;
-}
-
-.badge,
-.room-tag {
-  white-space: nowrap;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 0.78rem;
-}
-
-.badge {
-  background: rgba(212,162,76,0.12);
-  color: #f8dfb2;
-  border: 1px solid rgba(212,162,76,0.35);
-}
-
-.room-tag {
+::-webkit-scrollbar-track {
   background: #0f0f12;
-  color: #d4d4d8;
-  border: 1px solid var(--line);
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2f;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a42;
 }
 
-.control-section {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.control-section h2 {
-  margin: 0 0 14px 0;
-  font-size: 1.05rem;
-}
-
-label {
-  display: block;
-  margin-top: 12px;
-}
-
-label span {
-  display: block;
-  margin-bottom: 8px;
-  color: #d9d9df;
-  font-size: 0.92rem;
-}
-
+/* Inputs */
 input[type="number"],
 select {
-  width: 100%;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: #0d0d10;
-  color: var(--text);
-  padding: 12px;
   outline: none;
+  transition: all 0.2s ease;
 }
 
+input[type="number"]:focus,
+select:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
+}
+
+/* Range Slider */
 input[type="range"] {
+  -webkit-appearance: none;
   width: 100%;
+  height: 4px;
+  background: #27272a;
+  border-radius: 999px;
+  outline: none;
+  transition: background 0.2s;
 }
 
-.grid-two,
-.grid-three,
-.stats-grid {
-  display: grid;
-  gap: 12px;
+input[type="range"]:hover {
+  background: #3f3f46;
 }
 
-.grid-two {
-  grid-template-columns: 1fr 1fr;
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  background: #f59e0b;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease;
 }
 
-.grid-three {
-  grid-template-columns: repeat(3, 1fr);
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
 }
 
-.support-text {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.toggle-button {
-  width: 100%;
-  margin-top: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: #0e0e12;
-  color: var(--text);
-  padding: 12px 14px;
-  font-weight: 600;
+/* Buttons */
+button {
+  transition: all 0.2s ease;
   cursor: pointer;
 }
 
-.toggle-button:hover {
-  background: #17171c;
+button:hover {
+  transform: translateY(-1px);
 }
 
-.stats-grid {
-  margin-top: 22px;
-  grid-template-columns: 1fr 1fr;
+/* Panel glow effect */
+.panel-glow {
+  background: radial-gradient(circle at top, rgba(245,158,11,0.08), transparent 60%);
 }
 
-.stat {
-  border: 1px solid var(--line);
+/* Card styling */
+.card {
   border-radius: 18px;
-  background: #0d0d10;
-  padding: 14px;
+  background: #0f0f12;
+  border: 1px solid #27272a;
 }
 
-.stat-label {
-  color: var(--muted);
-  font-size: 0.78rem;
+/* Subtle text styles */
+.text-muted {
+  color: #a1a1aa;
 }
 
-.stat-value {
-  margin-top: 6px;
-  font-size: 1rem;
-  font-weight: 700;
+.text-accent {
+  color: #f59e0b;
 }
 
-.warning-card {
-  margin-top: 18px;
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(239,68,68,0.32);
-  background: rgba(127,29,29,0.18);
-}
-
-.warning-title {
-  color: #fda4a4;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.warning-card ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #fecaca;
-}
-
-.canvas-card {
-  padding: 24px;
-}
-
-.room-stage {
-  margin-top: 18px;
-  border-radius: 26px;
-  border: 1px solid var(--line);
-  background:
-    radial-gradient(circle at top, rgba(255,255,255,0.045), transparent 40%),
-    linear-gradient(180deg, #17171c, #0c0c10);
-  padding: 16px;
-  overflow: auto;
-}
-
-.room-svg {
+/* 3D container smoothing */
+canvas {
   display: block;
-  margin: 0 auto;
-  max-width: 100%;
-  height: auto;
 }
 
-@media (max-width: 1200px) {
-  .premium-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .controls-card {
-    position: static;
-  }
+/* Subtle fade animation */
+.fade-in {
+  animation: fadeIn 0.4s ease-in-out;
 }
 
-@media (max-width: 760px) {
-  .premium-page {
-    padding: 14px;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-
-  .grid-two,
-  .grid-three,
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .controls-head,
-  .canvas-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .controls-head h1 {
-    font-size: 1.6rem;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
