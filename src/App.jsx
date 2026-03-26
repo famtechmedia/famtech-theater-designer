@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import "./styles.css";
+import React, { Suspense, useMemo, useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, Environment, RoundedBox, Text, Html } from "@react-three/drei";
 
 const LAYOUTS = {
   "5.1.2": { surrounds: 2, rears: 0, heights: 2, subs: 1 },
@@ -11,31 +12,19 @@ const LAYOUTS = {
 };
 
 const SEATING = {
-  loveseat: { label: "Loveseat", seats: 2, width: 6.2 },
-  row3: { label: "Row of 3", seats: 3, width: 8.6 },
-  row4: { label: "Row of 4", seats: 4, width: 11.0 },
-  row5: { label: "Row of 5", seats: 5, width: 13.5 },
+  loveseat: { label: "Loveseat", seats: 2, width: 2.1 },
+  row3: { label: "Row of 3", seats: 3, width: 2.9 },
+  row4: { label: "Row of 4", seats: 4, width: 3.7 },
+  row5: { label: "Row of 5", seats: 5, width: 4.5 },
 };
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-function feetToPx(feet, pad, scale) {
-  return pad + feet * scale;
-}
-
-function useRoomScale(width, depth) {
-  const canvas = 920;
-  const pad = 56;
-  const scale = Math.min((canvas - pad * 2) / width, (canvas - pad * 2) / depth);
-  return { canvas, pad, scale };
-}
-
-function recommendedScreen(roomWidth, roomDepth) {
-  const usableWidth = Math.max(roomWidth - 2.4, 8);
-  const maxByWall = Math.floor(usableWidth / 0.0726);
-  const idealDistance = clamp(roomDepth * 0.56, 8, roomDepth - 6);
+function recommendedScreen(widthFt, depthFt) {
+  const maxByWall = Math.floor((widthFt - 2.4) / 0.0726);
+  const idealDistance = clamp(depthFt * 0.56, 8, depthFt - 6);
   const idealDiag = Math.round((idealDistance / 1.7) * 12);
   const min = clamp(Math.round(idealDiag * 0.9), 80, 160);
   const max = clamp(Math.min(Math.round(idealDiag * 1.1), maxByWall), min, 180);
@@ -46,207 +35,322 @@ function buildLayout({ roomWidth, roomDepth, screenSize, layoutKey, rows, seatin
   const layout = LAYOUTS[layoutKey];
   const seating = SEATING[seatingKey];
 
-  const stageDepth = 3.6;
-  const frontWalk = 1.8;
-  const rowDepth = 3.2;
-  const rowGap = 1.5;
-  const rearClearance = layout.rears ? 3.4 : 2.2;
-  const sideClearance = layout.wides ? 1.8 : 1.2;
+  const stageDepth = 1.1;
+  const frontWalk = 0.6;
+  const rowDepth = 1.15;
+  const rowGap = 0.55;
+  const rearClearance = layout.rears ? 1.1 : 0.7;
+  const sideClearance = layout.wides ? 0.7 : 0.45;
 
-  const seatingWidthNeeded = seating.width + sideClearance * 2;
-  const rowsDepthNeeded = rows * rowDepth + (rows - 1) * rowGap;
-  const depthNeeded = stageDepth + frontWalk + rowsDepthNeeded + rearClearance + 3.4;
+  const widthNeeded = seating.width + sideClearance * 2;
+  const depthNeeded = stageDepth + frontWalk + rows * rowDepth + (rows - 1) * rowGap + rearClearance + 1.1;
 
   const screenRange = recommendedScreen(roomWidth, roomDepth);
   const issues = [];
 
-  if (roomWidth < seatingWidthNeeded) {
-    issues.push(`Room width is too small for ${seating.label}. Increase room width or choose a smaller seating row.`);
+  if (roomWidth < widthNeeded) {
+    issues.push(`Room too narrow for ${seating.label}. Increase width or reduce seating size.`);
   }
   if (roomDepth < depthNeeded) {
-    issues.push(`Room depth is too small for ${rows} row(s). Increase room depth or reduce the number of rows.`);
+    issues.push(`Room too shallow for ${rows} row(s). Increase depth or reduce rows.`);
   }
   if (screenSize > screenRange.max) {
-    issues.push(`Selected screen is too large. Recommended screen size for this room is ${screenRange.min}"-${screenRange.max}".`);
+    issues.push(`Screen too large. Recommended range is ${screenRange.min}"-${screenRange.max}".`);
   }
 
   const isValid = issues.length === 0;
-  const viewingDistance = clamp(Number(((screenSize / 12) * 1.7).toFixed(1)), 8, roomDepth - 6.5);
-  const firstRowY = viewingDistance - 1.6;
+
+  const viewingDistanceFt = clamp(Number(((screenSize / 12) * 1.7).toFixed(1)), 8, roomDepth - 6.5);
+  const firstRowZ = -(viewingDistanceFt * 0.3048) + 0.45;
 
   const rowsData = Array.from({ length: rows }).map((_, i) => ({
-    x: (roomWidth - Math.min(seating.width, roomWidth - 2.0)) / 2,
-    y: firstRowY + i * (rowDepth + rowGap),
-    width: Math.min(seating.width, roomWidth - 2.0),
-    depth: rowDepth,
+    z: firstRowZ - i * (rowDepth + rowGap),
+    width: seating.width,
     seats: seating.seats,
     label: `Row ${i + 1}`,
   }));
 
-  const centerX = roomWidth / 2;
-  const screenWidth = clamp(screenSize * 0.0726, 6, roomWidth - 2.4);
-
-  const mlpY = rowsData[0] ? rowsData[0].y + rowDepth / 2 : roomDepth * 0.6;
-  const rearY = rowsData.length ? clamp(rowsData[rowsData.length - 1].y + rowDepth + 1.1, roomDepth - 2.5, roomDepth - 1.9) : roomDepth - 2.1;
-
-  const riser = rows > 1
-    ? {
-        x: rowsData[1].x - 0.35,
-        y: rowsData[1].y - 0.55,
-        width: rowsData[1].width + 0.7,
-        depth: rowsData[rowsData.length - 1].y + rowDepth - rowsData[1].y + 0.85,
-        height: rows === 2 ? 12 : 14,
-      }
-    : null;
+  const roomWm = roomWidth * 0.3048;
+  const roomDm = roomDepth * 0.3048;
+  const screenWidthM = clamp((screenSize * 0.0726) * 0.3048, 1.8, roomWm - 0.7);
+  const centerZ = rowsData[0]?.z ?? -roomDm * 0.4;
+  const rearZ = rowsData[rowsData.length - 1]?.z - 1.0 ?? -roomDm + 0.7;
 
   return {
     isValid,
     issues,
-    viewingDistance,
+    viewingDistanceFt,
     screenRange,
+    roomWm,
+    roomDm,
+    screenWidthM,
     rowsData,
-    riser,
-    projector: { x: centerX, y: clamp((screenSize / 12) * 1.35, 9, roomDepth - 2.1) },
-    screen: { x: centerX, width: screenWidth },
+    riser:
+      rows > 1
+        ? {
+            width: seating.width + 0.45,
+            depth: Math.abs((rowsData[rowsData.length - 1]?.z ?? 0) - (rowsData[1]?.z ?? 0)) + 1.15,
+            z: (rowsData[1]?.z ?? 0) - 0.15,
+            height: rows === 2 ? 0.18 : 0.24,
+          }
+        : null,
+    projector: {
+      z: clamp(-(screenSize / 12) * 0.42, -roomDm + 0.9, -2.6),
+      y: 2.55,
+    },
     speakers: {
       fronts: [
-        { x: centerX - 3.5, y: 2.0, label: "L" },
-        { x: centerX, y: 1.65, label: "C" },
-        { x: centerX + 3.5, y: 2.0, label: "R" },
+        { x: -screenWidthM * 0.43, y: 0.55, z: roomDm / 2 - 0.9, label: "L" },
+        { x: 0, y: 0.42, z: roomDm / 2 - 0.72, label: "C" },
+        { x: screenWidthM * 0.43, y: 0.55, z: roomDm / 2 - 0.9, label: "R" },
       ],
       wides: layout.wides
         ? [
-            { x: 1.7, y: roomDepth * 0.34, label: "FWL" },
-            { x: roomWidth - 1.7, y: roomDepth * 0.34, label: "FWR" },
+            { x: -roomWm / 2 + 0.32, y: 0.75, z: roomDm * 0.15, label: "FWL" },
+            { x: roomWm / 2 - 0.32, y: 0.75, z: roomDm * 0.15, label: "FWR" },
           ]
         : [],
       surrounds: [
-        { x: 1.55, y: clamp(mlpY, roomDepth * 0.48, roomDepth * 0.72), label: "SL" },
-        { x: roomWidth - 1.55, y: clamp(mlpY, roomDepth * 0.48, roomDepth * 0.72), label: "SR" },
+        { x: -roomWm / 2 + 0.24, y: 1.1, z: centerZ, label: "SL" },
+        { x: roomWm / 2 - 0.24, y: 1.1, z: centerZ, label: "SR" },
       ],
       rears: layout.rears
         ? [
-            { x: 1.9, y: rearY, label: "SBL" },
-            { x: roomWidth - 1.9, y: rearY, label: "SBR" },
+            { x: -roomWm / 2 + 0.28, y: 1.1, z: rearZ, label: "SBL" },
+            { x: roomWm / 2 - 0.28, y: 1.1, z: rearZ, label: "SBR" },
           ]
         : [],
       heights:
         layout.heights === 2
           ? [
-              { x: centerX - 2.2, y: mlpY - 1.8, label: "TML" },
-              { x: centerX + 2.2, y: mlpY - 1.8, label: "TMR" },
+              { x: -0.65, y: 2.75, z: centerZ + 0.2, label: "TML" },
+              { x: 0.65, y: 2.75, z: centerZ + 0.2, label: "TMR" },
             ]
           : [
-              { x: centerX - 2.8, y: Math.max(4.2, mlpY - 4.0), label: "TFL" },
-              { x: centerX + 2.8, y: Math.max(4.2, mlpY - 4.0), label: "TFR" },
-              { x: centerX - 2.8, y: Math.min(roomDepth - 4.0, mlpY + 3.0), label: "TRL" },
-              { x: centerX + 2.8, y: Math.min(roomDepth - 4.0, mlpY + 3.0), label: "TRR" },
+              { x: -0.85, y: 2.75, z: 1.0, label: "TFL" },
+              { x: 0.85, y: 2.75, z: 1.0, label: "TFR" },
+              { x: -0.85, y: 2.75, z: -1.9, label: "TRL" },
+              { x: 0.85, y: 2.75, z: -1.9, label: "TRR" },
             ],
       subs:
         layout.subs === 2
           ? [
-              { x: centerX - 5.1, y: 1.25, label: "SUB" },
-              { x: centerX + 5.1, y: 1.25, label: "SUB" },
+              { x: -1.35, y: 0.35, z: roomDm / 2 - 0.7, label: "SUB" },
+              { x: 1.35, y: 0.35, z: roomDm / 2 - 0.7, label: "SUB" },
             ]
-          : [{ x: centerX, y: 1.25, label: "SUB" }],
+          : [{ x: 0, y: 0.35, z: roomDm / 2 - 0.7, label: "SUB" }],
     },
     acoustic: {
       side: [
-        { x: 0.6, y: mlpY - 1.6, width: 0.22, height: 3.0 },
-        { x: roomWidth - 0.82, y: mlpY - 1.6, width: 0.22, height: 3.0 },
+        { x: 0.6, y: centerZ, width: 0.22, height: 0.95, depth: 0.7 },
+        { x: roomWm - 0.6, y: centerZ, width: 0.22, height: 0.95, depth: 0.7 },
       ],
       rear: [
-        { x: centerX - 2.2, y: roomDepth - 0.75, width: 1.45, height: 0.2 },
-        { x: centerX + 0.75, y: roomDepth - 0.75, width: 1.45, height: 0.2 },
+        { x: -1.1, y: -roomDm / 2 + 0.08, width: 0.9, height: 0.95, depth: 0.08 },
+        { x: 1.1, y: -roomDm / 2 + 0.08, width: 0.9, height: 0.95, depth: 0.08 },
       ],
     },
   };
 }
 
-function Speaker({ x, y, label, type, pad, scale }) {
-  const cx = feetToPx(x, pad, scale);
-  const cy = feetToPx(y, pad, scale);
-
-  if (type === "sub") {
-    return (
-      <g>
-        <rect x={cx - 13} y={cy - 10} width="26" height="20" rx="5" fill="#16b8a0" stroke="#7ce8d5" />
-        <circle cx={cx} cy={cy} r="4.5" fill="#073b37" />
-        <text x={cx} y={cy + 22} textAnchor="middle" fontSize="9" fill="#ccfbf1">{label}</text>
-      </g>
-    );
-  }
-
-  if (type === "height") {
-    return (
-      <g>
-        <circle cx={cx} cy={cy} r="10.5" fill="#ece8ff" stroke="#a78bfa" strokeWidth="1.4" />
-        <circle cx={cx} cy={cy} r="4.1" fill="#7c3aed" />
-        <text x={cx} y={cy + 20} textAnchor="middle" fontSize="8" fill="#ddd6fe">{label}</text>
-      </g>
-    );
-  }
-
-  if (type === "tower") {
-    return (
-      <g>
-        <rect x={cx - 8} y={cy - 15} width="16" height="30" rx="4" fill="#f5deb3" stroke="#d4a24c" />
-        <circle cx={cx} cy={cy - 5} r="3" fill="#35353b" />
-        <circle cx={cx} cy={cy + 5} r="4.1" fill="#26262b" />
-        <text x={cx} y={cy + 24} textAnchor="middle" fontSize="8" fill="#f8e6bf">{label}</text>
-      </g>
-    );
-  }
-
+function RoomShell({ width, depth, height }) {
   return (
-    <g>
-      <rect x={cx - 10} y={cy - 12} width="20" height="24" rx="4" fill="#efd8af" stroke="#c7902c" />
-      <circle cx={cx} cy={cy - 3.2} r="3" fill="#3b3b42" />
-      <circle cx={cx} cy={cy + 5.0} r="4.8" fill="#27272d" />
-      <text x={cx} y={cy + 23} textAnchor="middle" fontSize="8" fill="#f8e6bf">{label}</text>
-    </g>
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[width, depth]} />
+        <meshStandardMaterial color="#151519" roughness={0.95} metalness={0.04} />
+      </mesh>
+
+      <mesh position={[0, height / 2, depth / 2]} receiveShadow>
+        <boxGeometry args={[width, height, 0.05]} />
+        <meshStandardMaterial color="#101014" roughness={1} />
+      </mesh>
+
+      <mesh position={[0, height / 2, -depth / 2]} receiveShadow>
+        <boxGeometry args={[width, height, 0.05]} />
+        <meshStandardMaterial color="#0f0f13" roughness={1} />
+      </mesh>
+
+      <mesh position={[-width / 2, height / 2, 0]} receiveShadow>
+        <boxGeometry args={[0.05, height, depth]} />
+        <meshStandardMaterial color="#111116" roughness={1} />
+      </mesh>
+
+      <mesh position={[width / 2, height / 2, 0]} receiveShadow>
+        <boxGeometry args={[0.05, height, depth]} />
+        <meshStandardMaterial color="#111116" roughness={1} />
+      </mesh>
+    </group>
   );
 }
 
-function Projector({ x, y, pad, scale }) {
-  const cx = feetToPx(x, pad, scale);
-  const cy = feetToPx(y, pad, scale);
+function ScreenWall({ width, roomDepth }) {
   return (
-    <g>
-      <rect x={cx - 18} y={cy - 9} width="36" height="18" rx="4" fill="#cfd8e5" stroke="#94a3b8" />
-      <circle cx={cx + 9} cy={cy} r="4" fill="#0f172a" />
-      <rect x={cx - 12} y={cy + 9} width="24" height="3" rx="1.5" fill="#64748b" />
-      <text x={cx} y={cy - 14} textAnchor="middle" fontSize="9" fill="#e2e8f0">Projector</text>
-    </g>
+    <group position={[0, 1.62, roomDepth / 2 - 0.09]}>
+      <RoundedBox args={[width, 0.92, 0.03]} radius={0.03} smoothness={4} castShadow>
+        <meshStandardMaterial color="#f2f2f2" emissive="#ffffff" emissiveIntensity={0.08} />
+      </RoundedBox>
+      <Text position={[0, 0.72, 0]} fontSize={0.12} color="#bfc1c7" anchorX="center" anchorY="middle">
+        Projection Screen
+      </Text>
+    </group>
   );
 }
 
-function SeatRow({ row, pad, scale }) {
-  const gap = 0.14;
-  const innerWidth = row.width - 0.34;
-  const seatWidth = (innerWidth - gap * (row.seats - 1)) / row.seats;
-  const baseX = row.x + 0.17;
-  const baseY = row.y + 0.18;
-  const seatDepth = row.depth - 0.44;
-
+function ProjectorModel({ position }) {
   return (
-    <g>
-      <rect x={feetToPx(row.x, pad, scale)} y={feetToPx(row.y, pad, scale)} width={row.width * scale} height={row.depth * scale} rx="18" fill="#212127" stroke="#5b5b65" />
-      {Array.from({ length: row.seats }).map((_, i) => {
-        const sx = baseX + i * (seatWidth + gap);
-        return (
-          <g key={i}>
-            <rect x={feetToPx(sx, pad, scale)} y={feetToPx(baseY + 0.66, pad, scale)} width={seatWidth * scale} height={(seatDepth - 0.72) * scale} rx="12" fill="#4d4d58" stroke="#858590" />
-            <rect x={feetToPx(sx + 0.08, pad, scale)} y={feetToPx(baseY + 0.18, pad, scale)} width={(seatWidth - 0.16) * scale} height={0.65 * scale} rx="10" fill="#6b6b77" />
-            <rect x={feetToPx(sx - 0.05, pad, scale)} y={feetToPx(baseY + 0.76, pad, scale)} width={0.08 * scale} height={(seatDepth - 0.9) * scale} rx="4" fill="#8a8a95" />
-            <rect x={feetToPx(sx + seatWidth - 0.03, pad, scale)} y={feetToPx(baseY + 0.76, pad, scale)} width={0.08 * scale} height={(seatDepth - 0.9) * scale} rx="4" fill="#8a8a95" />
-          </g>
-        );
-      })}
-      <text x={feetToPx(row.x + row.width / 2, pad, scale)} y={feetToPx(row.y + row.depth / 2 + 0.08, pad, scale)} textAnchor="middle" fontSize="10.5" fill="#f5f5f5">
-        {row.label}
-      </text>
-    </g>
+    <group position={position} castShadow>
+      <RoundedBox args={[0.42, 0.12, 0.28]} radius={0.03} smoothness={4}>
+        <meshStandardMaterial color="#d7dde5" metalness={0.2} roughness={0.5} />
+      </RoundedBox>
+      <mesh position={[0.13, 0, 0.1]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.02, 24]} />
+        <meshStandardMaterial color="#0c1220" metalness={0.5} roughness={0.2} />
+      </mesh>
+    </group>
+  );
+}
+
+function SpeakerModel({ position, label, type = "inwall" }) {
+  return (
+    <group position={position}>
+      {type === "height" ? (
+        <mesh castShadow>
+          <cylinderGeometry args={[0.1, 0.1, 0.04, 28]} />
+          <meshStandardMaterial color="#ece8ff" />
+        </mesh>
+      ) : type === "sub" ? (
+        <RoundedBox args={[0.28, 0.28, 0.28]} radius={0.03} smoothness={4} castShadow>
+          <meshStandardMaterial color="#19b7a0" />
+        </RoundedBox>
+      ) : type === "tower" ? (
+        <RoundedBox args={[0.16, 0.72, 0.16]} radius={0.03} smoothness={4} castShadow>
+          <meshStandardMaterial color="#efd8af" />
+        </RoundedBox>
+      ) : (
+        <RoundedBox args={[0.18, 0.42, 0.12]} radius={0.025} smoothness={4} castShadow>
+          <meshStandardMaterial color="#efd8af" />
+        </RoundedBox>
+      )}
+      <Html distanceFactor={12} position={[0, type === "tower" ? 0.48 : 0.22, 0]} center>
+        <div style={{ color: "#f8e6bf", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</div>
+      </Html>
+    </group>
+  );
+}
+
+function Chair({ position }) {
+  return (
+    <group position={position} castShadow>
+      <RoundedBox args={[0.68, 0.22, 0.88]} radius={0.06} smoothness={4} position={[0, 0.18, 0]}>
+        <meshStandardMaterial color="#4e4e58" roughness={0.8} />
+      </RoundedBox>
+      <RoundedBox args={[0.62, 0.54, 0.18]} radius={0.05} smoothness={4} position={[0, 0.46, 0.33]}>
+        <meshStandardMaterial color="#6b6b77" roughness={0.72} />
+      </RoundedBox>
+      <RoundedBox args={[0.08, 0.26, 0.68]} radius={0.03} smoothness={4} position={[-0.34, 0.24, 0]}>
+        <meshStandardMaterial color="#858590" />
+      </RoundedBox>
+      <RoundedBox args={[0.08, 0.26, 0.68]} radius={0.03} smoothness={4} position={[0.34, 0.24, 0]}>
+        <meshStandardMaterial color="#858590" />
+      </RoundedBox>
+    </group>
+  );
+}
+
+function SeatRow3D({ row }) {
+  const spacing = 0.75;
+  const totalWidth = (row.seats - 1) * spacing;
+  return (
+    <group>
+      {Array.from({ length: row.seats }).map((_, i) => (
+        <Chair key={i} position={[-totalWidth / 2 + i * spacing, 0, row.z]} />
+      ))}
+      <Html distanceFactor={12} position={[0, 0.95, row.z]} center>
+        <div style={{ color: "#f5f5f5", fontSize: 12, fontWeight: 700 }}>{row.label}</div>
+      </Html>
+    </group>
+  );
+}
+
+function Riser({ riser }) {
+  return (
+    <group position={[0, riser.height / 2 - 0.01, riser.z]}>
+      <RoundedBox args={[riser.width, riser.height, riser.depth]} radius={0.05} smoothness={4} receiveShadow>
+        <meshStandardMaterial color="#232329" roughness={0.95} />
+      </RoundedBox>
+    </group>
+  );
+}
+
+function AcousticPanels({ layout }) {
+  return (
+    <group>
+      <mesh position={[-layout.roomWm / 2 + 0.05, 1.45, layout.acoustic.side[0].y]}>
+        <boxGeometry args={[0.06, layout.acoustic.side[0].height, layout.acoustic.side[0].depth]} />
+        <meshStandardMaterial color="#234da0" roughness={0.9} />
+      </mesh>
+      <mesh position={[layout.roomWm / 2 - 0.05, 1.45, layout.acoustic.side[1].y]}>
+        <boxGeometry args={[0.06, layout.acoustic.side[1].height, layout.acoustic.side[1].depth]} />
+        <meshStandardMaterial color="#234da0" roughness={0.9} />
+      </mesh>
+      {layout.acoustic.rear.map((panel, i) => (
+        <mesh key={i} position={[panel.x, 1.45, panel.y]}>
+          <boxGeometry args={[panel.width, panel.height, panel.depth]} />
+          <meshStandardMaterial color="#234da0" roughness={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function TheaterScene({ layout, showAcoustic, bedType, roomHeight }) {
+  return (
+    <>
+      <ambientLight intensity={0.75} />
+      <directionalLight
+        position={[2.5, 5.5, 2.5]}
+        intensity={1.2}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
+      <spotLight position={[0, 2.7, layout.roomDm / 2 - 0.8]} angle={0.52} intensity={18} penumbra={0.85} color="#e5d0a5" />
+
+      <RoomShell width={layout.roomWm} depth={layout.roomDm} height={roomHeight * 0.3048} />
+      <ScreenWall width={layout.screenWidthM} roomDepth={layout.roomDm} />
+      <ProjectorModel position={[0, layout.projector.y, layout.projector.z]} />
+
+      {showAcoustic && <AcousticPanels layout={layout} />}
+
+      {layout.riser && <Riser riser={layout.riser} />}
+
+      {layout.rowsData.map((row, i) => (
+        <SeatRow3D key={i} row={row} />
+      ))}
+
+      {layout.speakers.fronts.map((s, i) => (
+        <SpeakerModel key={`f-${i}`} position={[s.x, s.y, s.z]} label={s.label} type={bedType} />
+      ))}
+      {layout.speakers.wides.map((s, i) => (
+        <SpeakerModel key={`w-${i}`} position={[s.x, s.y, s.z]} label={s.label} type={bedType} />
+      ))}
+      {layout.speakers.surrounds.map((s, i) => (
+        <SpeakerModel key={`s-${i}`} position={[s.x, s.y, s.z]} label={s.label} type={bedType} />
+      ))}
+      {layout.speakers.rears.map((s, i) => (
+        <SpeakerModel key={`r-${i}`} position={[s.x, s.y, s.z]} label={s.label} type={bedType} />
+      ))}
+      {layout.speakers.heights.map((s, i) => (
+        <SpeakerModel key={`h-${i}`} position={[s.x, s.y, s.z]} label={s.label} type="height" />
+      ))}
+      {layout.speakers.subs.map((s, i) => (
+        <SpeakerModel key={`sub-${i}`} position={[s.x, s.y, s.z]} label={s.label} type="sub" />
+      ))}
+
+      <OrbitControls makeDefault target={[0, 0.9, 0]} minDistance={5} maxDistance={16} maxPolarAngle={Math.PI / 2.05} />
+      <Environment preset="warehouse" />
+    </>
   );
 }
 
@@ -266,8 +370,14 @@ export default function App() {
     [roomWidth, roomDepth, screenSize, layoutKey, rows, seatingKey]
   );
 
-  const { canvas, pad, scale } = useRoomScale(roomWidth, roomDepth);
-  const canUseThreeRows = buildLayout({ roomWidth, roomDepth, screenSize, layoutKey, rows: 3, seatingKey }).isValid;
+  const canUseThreeRows = buildLayout({
+    roomWidth,
+    roomDepth,
+    screenSize,
+    layoutKey,
+    rows: 3,
+    seatingKey,
+  }).isValid;
 
   const onRowsChange = (value) => {
     const next = Number(value);
@@ -282,127 +392,144 @@ export default function App() {
   };
 
   return (
-    <div className="premium-page">
-      <div className="premium-shell">
-        <aside className="controls-card">
-          <div className="controls-head">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-[400px_1fr] gap-6">
+        <aside className="rounded-3xl border border-zinc-800 bg-zinc-900/90 shadow-2xl p-6 sticky top-4 h-fit">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="eyebrow">Fam Tech Media</div>
-              <h1>Premium Theater Designer</h1>
-              <p>Cleaner visuals, projector-first planning, blocked invalid layouts, and a more premium top-view presentation.</p>
+              <div className="text-xs uppercase tracking-[0.18em] text-amber-400">Fam Tech Media</div>
+              <h1 className="text-3xl font-semibold leading-tight mt-1">3D Theater Designer</h1>
+              <p className="text-sm text-zinc-400 mt-2">
+                This is now a real 3D foundation with orbit controls, projector-first planning, seating rows, riser logic,
+                and speaker placement in a 3D room.
+              </p>
             </div>
-            <div className="badge">Premium V1</div>
+            <div className="rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs px-3 py-1">3D Alpha</div>
           </div>
 
-          <section className="control-section">
-            <h2>1. Room Size</h2>
-            <div className="grid-three">
-              <label><span>Width</span><input type="number" value={roomWidth} onChange={(e) => setRoomWidth(Number(e.target.value || 0))} /></label>
-              <label><span>Depth</span><input type="number" value={roomDepth} onChange={(e) => setRoomDepth(Number(e.target.value || 0))} /></label>
-              <label><span>Height</span><input type="number" value={roomHeight} onChange={(e) => setRoomHeight(Number(e.target.value || 0))} /></label>
+          <div className="mt-6 space-y-5">
+            <section className="border-t border-zinc-800 pt-5">
+              <h2 className="text-base font-medium mb-3">1. Room Size</h2>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="text-sm">
+                  <span className="block text-zinc-400 mb-1">Width</span>
+                  <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" type="number" value={roomWidth} onChange={(e) => setRoomWidth(Number(e.target.value || 0))} />
+                </label>
+                <label className="text-sm">
+                  <span className="block text-zinc-400 mb-1">Depth</span>
+                  <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" type="number" value={roomDepth} onChange={(e) => setRoomDepth(Number(e.target.value || 0))} />
+                </label>
+                <label className="text-sm">
+                  <span className="block text-zinc-400 mb-1">Height</span>
+                  <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" type="number" value={roomHeight} onChange={(e) => setRoomHeight(Number(e.target.value || 0))} />
+                </label>
+              </div>
+            </section>
+
+            <section className="border-t border-zinc-800 pt-5">
+              <h2 className="text-base font-medium mb-3">2. Screen</h2>
+              <label className="text-sm block">
+                <span className="block text-zinc-400 mb-1">Screen Size: {screenSize}"</span>
+                <input className="w-full" type="range" min={80} max={180} value={screenSize} onChange={(e) => onScreenChange(e.target.value)} />
+              </label>
+              <div className="text-xs text-zinc-500 mt-2">Recommended size for this room: {layout.screenRange.min}"-{layout.screenRange.max}"</div>
+            </section>
+
+            <section className="border-t border-zinc-800 pt-5">
+              <h2 className="text-base font-medium mb-3">3. Audio Layout</h2>
+              <label className="text-sm block">
+                <span className="block text-zinc-400 mb-1">Dolby Atmos Layout</span>
+                <select className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" value={layoutKey} onChange={(e) => setLayoutKey(e.target.value)}>
+                  {Object.keys(LAYOUTS).map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm block mt-3">
+                <span className="block text-zinc-400 mb-1">Speaker Style</span>
+                <select className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" value={bedType} onChange={(e) => setBedType(e.target.value)}>
+                  <option value="inwall">In-Wall</option>
+                  <option value="tower">Floorstanding</option>
+                </select>
+              </label>
+            </section>
+
+            <section className="border-t border-zinc-800 pt-5">
+              <h2 className="text-base font-medium mb-3">4. Seating</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm block">
+                  <span className="block text-zinc-400 mb-1">Rows</span>
+                  <select className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" value={rows} onChange={(e) => onRowsChange(e.target.value)}>
+                    <option value={1}>1 Row</option>
+                    <option value={2}>2 Rows</option>
+                    <option value={3} disabled={!canUseThreeRows}>3 Rows {!canUseThreeRows ? "(blocked)" : ""}</option>
+                  </select>
+                </label>
+                <label className="text-sm block">
+                  <span className="block text-zinc-400 mb-1">Seats Per Row</span>
+                  <select className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2" value={seatingKey} onChange={(e) => setSeatingKey(e.target.value)}>
+                    {Object.entries(SEATING).map(([key, item]) => (
+                      <option key={key} value={key}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section className="border-t border-zinc-800 pt-5">
+              <h2 className="text-base font-medium mb-3">5. Enhancements</h2>
+              <button className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => setShowAcoustic((v) => !v)}>
+                {showAcoustic ? "Hide Acoustic Panels" : "Show Acoustic Panels"}
+              </button>
+            </section>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mt-6">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+              <div className="text-zinc-400 text-xs">Viewing Distance</div>
+              <div className="mt-1 font-medium">{layout.viewingDistanceFt} ft</div>
             </div>
-          </section>
-
-          <section className="control-section">
-            <h2>2. Screen</h2>
-            <label><span>Screen Size: {screenSize}"</span><input type="range" min="80" max="180" value={screenSize} onChange={(e) => onScreenChange(e.target.value)} /></label>
-            <div className="support-text">Recommended size for this room: {layout.screenRange.min}"-{layout.screenRange.max}"</div>
-          </section>
-
-          <section className="control-section">
-            <h2>3. Audio Layout</h2>
-            <label><span>Dolby Atmos Layout</span><select value={layoutKey} onChange={(e) => setLayoutKey(e.target.value)}>{Object.keys(LAYOUTS).map((item) => <option key={item}>{item}</option>)}</select></label>
-            <label><span>Speaker Style</span><select value={bedType} onChange={(e) => setBedType(e.target.value)}><option value="inwall">In-Wall</option><option value="tower">Floorstanding</option></select></label>
-          </section>
-
-          <section className="control-section">
-            <h2>4. Seating</h2>
-            <div className="grid-two">
-              <label><span>Rows</span><select value={rows} onChange={(e) => onRowsChange(e.target.value)}><option value={1}>1 Row</option><option value={2}>2 Rows</option><option value={3} disabled={!canUseThreeRows}>3 Rows {!canUseThreeRows ? "(blocked)" : ""}</option></select></label>
-              <label><span>Seats Per Row</span><select value={seatingKey} onChange={(e) => setSeatingKey(e.target.value)}>{Object.entries(SEATING).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+              <div className="text-zinc-400 text-xs">Layout</div>
+              <div className="mt-1 font-medium">{layoutKey}</div>
             </div>
-          </section>
-
-          <section className="control-section">
-            <h2>5. Room Enhancements</h2>
-            <button className="toggle-button" onClick={() => setShowAcoustic((v) => !v)}>
-              {showAcoustic ? "Hide Acoustic Panels" : "Show Acoustic Panels"}
-            </button>
-          </section>
-
-          <div className="stats-grid">
-            <div className="stat"><div className="stat-label">Viewing Distance</div><div className="stat-value">{layout.viewingDistance} ft</div></div>
-            <div className="stat"><div className="stat-label">Layout</div><div className="stat-value">{layoutKey}</div></div>
-            <div className="stat"><div className="stat-label">Projector Throw</div><div className="stat-value">{layout.projector.y.toFixed(1)} ft</div></div>
-            <div className="stat"><div className="stat-label">Room Size</div><div className="stat-value">{roomWidth}' × {roomDepth}'</div></div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+              <div className="text-zinc-400 text-xs">Projector Throw</div>
+              <div className="mt-1 font-medium">{Math.abs(layout.projector.z).toFixed(1)} m</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+              <div className="text-zinc-400 text-xs">Room</div>
+              <div className="mt-1 font-medium">{roomWidth}' × {roomDepth}'</div>
+            </div>
           </div>
 
           {!layout.isValid && (
-            <div className="warning-card">
-              <div className="warning-title">Layout blocked</div>
-              <ul>
+            <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+              <div className="font-medium text-red-300">This layout is blocked</div>
+              <ul className="mt-2 space-y-1 text-sm text-red-200 list-disc pl-5">
                 {layout.issues.map((issue, idx) => <li key={idx}>{issue}</li>)}
               </ul>
             </div>
           )}
         </aside>
 
-        <main className="canvas-card">
-          <div className="canvas-top">
+        <main className="rounded-3xl border border-zinc-800 bg-zinc-900/90 shadow-2xl p-4 min-h-[760px] overflow-hidden">
+          <div className="flex items-start justify-between gap-3 mb-4 px-2">
             <div>
-              <h2>Top View Theater Layout</h2>
-              <p>This version is focused on a much cleaner premium look while keeping the room-planning logic intact.</p>
+              <h2 className="text-xl font-medium">Live 3D Theater View</h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Rotate, zoom, and inspect the room in 3D. This is the correct foundation for the premium designer you want.
+              </p>
             </div>
-            <div className="room-tag">{roomWidth}' × {roomDepth}'</div>
+            <div className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300">Orbit Enabled</div>
           </div>
 
-          <div className="room-stage">
-            <svg width={canvas} height={canvas} viewBox={`0 0 ${canvas} ${canvas}`} className="room-svg">
-              <defs>
-                <radialGradient id="roomGlow" cx="50%" cy="0%" r="80%">
-                  <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
-                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-                </radialGradient>
-                <linearGradient id="roomFill" x1="0%" x2="0%" y1="0%" y2="100%">
-                  <stop offset="0%" stopColor="#17171c" />
-                  <stop offset="100%" stopColor="#0d0d11" />
-                </linearGradient>
-              </defs>
-
-              <rect x={pad} y={pad} width={roomWidth * scale} height={roomDepth * scale} rx="30" fill="url(#roomFill)" stroke="#41414a" strokeWidth="2" />
-              <rect x={pad} y={pad} width={roomWidth * scale} height={roomDepth * scale} rx="30" fill="url(#roomGlow)" />
-
-              {showAcoustic && layout.acoustic.side.map((panel, i) => (
-                <rect key={`side-${i}`} x={feetToPx(panel.x, pad, scale)} y={feetToPx(panel.y, pad, scale)} width={panel.width * scale} height={panel.height * scale} rx="6" fill="#204ea7" opacity="0.58" />
-              ))}
-              {showAcoustic && layout.acoustic.rear.map((panel, i) => (
-                <rect key={`rear-${i}`} x={feetToPx(panel.x, pad, scale)} y={feetToPx(panel.y, pad, scale)} width={panel.width * scale} height={panel.height * scale} rx="5" fill="#204ea7" opacity="0.58" />
-              ))}
-
-              <rect x={feetToPx(layout.screen.x - layout.screen.width / 2, pad, scale)} y={feetToPx(0.48, pad, scale)} width={layout.screen.width * scale} height="15" rx="7" fill="#ececec" />
-              <text x={canvas / 2} y={feetToPx(0.28, pad, scale)} textAnchor="middle" fontSize="11" fill="#bfc1c7">Projection Screen</text>
-
-              <Projector x={layout.projector.x} y={layout.projector.y} pad={pad} scale={scale} />
-
-              {layout.speakers.fronts.map((item, i) => <Speaker key={`f-${i}`} x={item.x} y={item.y} label={item.label} type={bedType} pad={pad} scale={scale} />)}
-              {layout.speakers.wides.map((item, i) => <Speaker key={`w-${i}`} x={item.x} y={item.y} label={item.label} type={bedType} pad={pad} scale={scale} />)}
-              {layout.speakers.surrounds.map((item, i) => <Speaker key={`s-${i}`} x={item.x} y={item.y} label={item.label} type={bedType} pad={pad} scale={scale} />)}
-              {layout.speakers.rears.map((item, i) => <Speaker key={`r-${i}`} x={item.x} y={item.y} label={item.label} type={bedType} pad={pad} scale={scale} />)}
-              {layout.speakers.heights.map((item, i) => <Speaker key={`h-${i}`} x={item.x} y={item.y} label={item.label} type="height" pad={pad} scale={scale} />)}
-              {layout.speakers.subs.map((item, i) => <Speaker key={`sub-${i}`} x={item.x} y={item.y} label={item.label} type="sub" pad={pad} scale={scale} />)}
-
-              {layout.riser && (
-                <g>
-                  <rect x={feetToPx(layout.riser.x, pad, scale)} y={feetToPx(layout.riser.y, pad, scale)} width={layout.riser.width * scale} height={layout.riser.depth * scale} rx="22" fill="#232329" stroke="#5b5b65" strokeDasharray="7 5" />
-                  <text x={feetToPx(layout.riser.x + layout.riser.width / 2, pad, scale)} y={feetToPx(layout.riser.y + layout.riser.depth - 0.2, pad, scale)} textAnchor="middle" fontSize="10" fill="#e4e4e7">Riser · {layout.riser.height}"</text>
-                </g>
-              )}
-
-              {layout.rowsData.map((row, i) => <SeatRow key={`row-${i}`} row={row} pad={pad} scale={scale} />)}
-
-              <line x1={canvas / 2} y1={feetToPx(0.9, pad, scale)} x2={canvas / 2} y2={feetToPx(layout.rowsData[0]?.y || 8, pad, scale)} stroke="#efc161" strokeDasharray="6 5" />
-              <text x={canvas / 2 + 10} y={feetToPx((layout.rowsData[0]?.y || 8) / 2, pad, scale)} fontSize="11" fill="#efc161">{layout.viewingDistance} ft viewing distance</text>
-            </svg>
+          <div className="rounded-3xl border border-zinc-800 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_45%),linear-gradient(to_bottom,rgba(24,24,27,1),rgba(9,9,11,1))] h-[690px] overflow-hidden">
+            <Canvas shadows camera={{ position: [0, 4.8, 7.8], fov: 42 }}>
+              <Suspense fallback={null}>
+                <TheaterScene layout={layout} showAcoustic={showAcoustic} bedType={bedType} roomHeight={roomHeight} />
+              </Suspense>
+            </Canvas>
           </div>
         </main>
       </div>
